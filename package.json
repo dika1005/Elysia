@@ -15,11 +15,13 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "elysia": "latest",
+    "nodemailer": "^7.0.11",
     "resend": "^6.5.2"
   },
   "devDependencies": {
     "@prisma/client": "5",
     "@types/bcryptjs": "^3.0.0",
+    "@types/nodemailer": "^7.0.4",
     "bun-types": "latest",
     "prisma": "5"
   },

@@ -1,16 +1,13 @@
-import { RegisterRepository } from '../../repositories/auth/register.repository';
-import bcrypt from 'bcryptjs';
 import { prisma } from '../../utils/prisma';
-import { EmailService } from '../email.service';
+import bcrypt from 'bcryptjs';
 import { TokenGenerator } from '../../utils/token';
+import { SMTPService } from '../smtp.service'; // ← Ganti dari email.service
 
 export class RegisterService {
-  private registerRepository: RegisterRepository;
-  private emailService: EmailService;
+  private smtpService: SMTPService; // ← Ganti
 
   constructor() {
-    this.registerRepository = new RegisterRepository();
-    this.emailService = new EmailService();
+    this.smtpService = new SMTPService(); // ← Ganti
   }
 
   async register(data: {
@@ -20,58 +17,57 @@ export class RegisterService {
     phone?: string;
     avatar?: string;
   }) {
-    // Validasi email sudah terdaftar di User aktif
-    const existingActiveUser = await prisma.user.findUnique({
+    // Cek apakah email sudah ada di TemporaryUser
+    const existingTemp = await prisma.temporaryUser.findUnique({
       where: { email: data.email }
     });
-    if (existingActiveUser) {
-      throw new Error('Email already registered');
+
+    if (existingTemp) {
+      throw new Error('Email already registered. Please check your email for verification.');
     }
 
-    // Validasi email sudah terdaftar di TemporaryUser (pending verification)
-    const existingTempUser = await prisma.temporaryUser.findUnique({
+    // Cek apakah email sudah ada di User (sudah verified)
+    const existingUser = await prisma.user.findUnique({
       where: { email: data.email }
     });
-    if (existingTempUser) {
-      throw new Error('Email already registered. Please check your email for verification link.');
+
+    if (existingUser) {
+      throw new Error('Email already registered and verified.');
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     // Generate verification token
-    const token = TokenGenerator.generateVerificationToken();
+    const verificationToken = TokenGenerator.generateVerificationToken();
     const expiresAt = TokenGenerator.generateTokenExpiry(24); // 24 jam
 
-    // Simpan ke TemporaryUser table
+    // Simpan ke TemporaryUser
     const tempUser = await prisma.temporaryUser.create({
       data: {
         email: data.email,
         name: data.name,
         password: hashedPassword,
-        phone: data.phone || null,
-        avatar: data.avatar || null,
-        verificationToken: token,
+        phone: data.phone,
+        avatar: data.avatar,
+        verificationToken,
         expiresAt
       }
     });
 
-    console.log('✅ Temporary user created with token:', token);
+    console.log('✅ Temporary user created with token:', verificationToken);
 
-    // Kirim email verifikasi ke email user
+    // Kirim email verifikasi via SMTP
     try {
-      await this.emailService.sendVerificationEmail(
+      await this.smtpService.sendVerificationEmail(
         tempUser.email,
-        token,
+        verificationToken,
         tempUser.name
       );
-      console.log('✅ Email sent to:', tempUser.email);
     } catch (error) {
       console.error('Failed to send verification email:', error);
       // Hapus temporary user jika email gagal
-      await prisma.temporaryUser.delete({
-        where: { id: tempUser.id }
-      });
+      await prisma.temporaryUser.delete({ where: { id: tempUser.id } });
       throw new Error('Failed to send verification email. Please try again.');
     }
 
