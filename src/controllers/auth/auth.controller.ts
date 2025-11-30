@@ -4,12 +4,16 @@ import { cookie } from "@elysiajs/cookie";
 import { RegisterService } from "../../services/auth/register.service";
 import { LoginService } from "../../services/auth/login.service";
 import { LogoutService } from "../../services/auth/logout.service";
+import { VerifyEmailService } from "../../services/auth/verify-email.service";
+import { EmailService } from "../../services/email.service";
 import { jwtConfig } from "../../utils/jwt";
 import { successResponse, errorResponse } from "../../utils/response";
 
 const registerService = new RegisterService();
 const loginService = new LoginService();
 const logoutService = new LogoutService();
+const verifyEmailService = new VerifyEmailService();
+const emailService = new EmailService();
 
 export const authController = new Elysia({ prefix: "/api/auth" })
   .use(cookie())
@@ -33,8 +37,8 @@ export const authController = new Elysia({ prefix: "/api/auth" })
     "/register",
     async ({ body }) => {
       try {
-        const user = await registerService.register(body as any);
-        return successResponse(user, "User registered successfully", 201);
+        const result = await registerService.register(body as any);
+        return successResponse(result, result.message, 201);
       } catch (error: any) {
         return errorResponse(error.message, 400);
       }
@@ -50,7 +54,53 @@ export const authController = new Elysia({ prefix: "/api/auth" })
       detail: {
         tags: ["Auth"],
         summary: "Register new user",
-        description: "Create a new user account",
+        description: "Create a new user account and send verification email",
+      },
+    }
+  )
+
+  // VERIFY EMAIL
+  .get(
+    "/verify-email",
+    async ({ query }) => {
+      try {
+        const result = await verifyEmailService.verifyEmail(query.token);
+        return successResponse(null, result.message);
+      } catch (error: any) {
+        return errorResponse(error.message, 400);
+      }
+    },
+    {
+      query: t.Object({
+        token: t.String()
+      }),
+      detail: {
+        tags: ["Auth"],
+        summary: "Verify email address",
+        description: "Verify user email with token from email",
+      },
+    }
+  )
+
+  // RESEND VERIFICATION EMAIL
+  .post(
+    "/resend-verification",
+    async ({ body }) => {
+      try {
+        const result = await verifyEmailService.resendVerification(body.email);
+        return successResponse(null, result.message);
+      } catch (error: any) {
+        return errorResponse(error.message, 400);
+      }
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" })
+      }),
+      detail: {
+        tags: ["Auth"],
+        summary: "Resend verification email",
+        description: "Resend verification email to user",
       },
     }
   )
@@ -60,10 +110,22 @@ export const authController = new Elysia({ prefix: "/api/auth" })
     "/login",
     async ({ body, jwt, refreshJwt, cookie: { accessToken, refreshToken } }) => {
       try {
-        const { user, payload } = await loginService.login(
+        const result = await loginService.login(
           body.email,
           body.password
         );
+
+        // Cek apakah user temporary (belum verified)
+        if (result.requiresVerification) {
+          return successResponse(
+            result.user,
+            result.message,
+            200
+          );
+        }
+
+        // User sudah verified, generate tokens
+        const { user, payload } = result;
 
         // Generate access token (15 menit)
         const access = await jwt.sign(payload as any);

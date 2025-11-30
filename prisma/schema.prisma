@@ -17,19 +17,31 @@ model Role {
   users     User[]
 }
 
+model TemporaryUser {
+  id                Int      @id @default(autoincrement())
+  email             String   @unique
+  name              String
+  password          String
+  phone             String?
+  avatar            String?
+  verificationToken String   @unique
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+}
+
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique
-  name          String
-  password      String
-  phone         String?
-  avatar        String?
-  isActive      Boolean        @default(true)
-  roleId        Int            @default(2)
-  role          Role           @relation(fields: [roleId], references: [id])
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
+  id              Int            @id @default(autoincrement())
+  email           String         @unique
+  name            String
+  password        String
+  phone           String?
+  avatar          String?
+  emailVerifiedAt DateTime?
+  roleId          Int            @default(2)
+  role            Role           @relation(fields: [roleId], references: [id])
+  refreshTokens   RefreshToken[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([roleId])
 }
